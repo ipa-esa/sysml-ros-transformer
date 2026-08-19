@@ -232,4 +232,250 @@ public class RosSystem2SysMLTransformer {
         int lastSlash = rosType.lastIndexOf('/');
         return lastSlash >= 0 ? rosType.substring(lastSlash + 1) : rosType;
     }
+
+    /**
+     * Transforms .rossystem content (and optional .ros2 content for types) into a SysMLResult.
+     */
+    public SysMLResult transformText(String rossystemContent, String ros2Content) {
+        SysMLResult result = new SysMLResult();
+
+        // Extract interface type mappings from ros2 content if available
+        Map<String, String> artifactIfaceToRosType = new LinkedHashMap<>();
+        if (ros2Content != null) {
+            String currentArtifact = null;
+            String currentIface = null;
+            for (String rawLine : ros2Content.split("\n")) {
+                String trimmed = rawLine.trim();
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
+
+                if (rawLine.startsWith("    ") && !rawLine.startsWith("      ") && trimmed.endsWith(":")) {
+                    currentArtifact = trimmed.substring(0, trimmed.length() - 1).trim();
+                } else if (rawLine.startsWith("        ") && !rawLine.startsWith("          ") && trimmed.endsWith(":")) {
+                    currentIface = trimmed.substring(0, trimmed.length() - 1).trim();
+                } else if (trimmed.startsWith("type:")) {
+                    String rosType = trimmed.substring("type:".length()).trim().replace("\"", "");
+                    if (currentArtifact != null && currentIface != null) {
+                        artifactIfaceToRosType.put(currentArtifact + "::" + currentIface, rosType);
+                    }
+                }
+            }
+        }
+
+        // Parse rossystem content
+        java.util.regex.Pattern sysNamePattern = java.util.regex.Pattern.compile("^\\s*([a-zA-Z0-9_]+):", java.util.regex.Pattern.MULTILINE);
+        java.util.regex.Matcher sysNameMatcher = sysNamePattern.matcher(rossystemContent);
+        if (sysNameMatcher.find()) {
+            result.systemName = sysNameMatcher.group(1);
+        } else {
+            result.systemName = "test_system";
+        }
+        result.packageName = result.systemName + "_architecture";
+
+        java.util.regex.Pattern fromFilePattern = java.util.regex.Pattern.compile("fromFile:\\s*\"([^\"]+)\"");
+        java.util.regex.Matcher fromFileMatcher = fromFilePattern.matcher(rossystemContent);
+        if (fromFileMatcher.find()) {
+            result.fromFile = fromFileMatcher.group(1);
+        }
+
+        Map<String, ModeletTypeResult> modeletTypeMap = new LinkedHashMap<>();
+
+        // Parse nodes block
+        java.util.regex.Pattern nodeBlockPattern = java.util.regex.Pattern.compile("\"?([a-zA-Z0-9_]+)\"?:[\\s\\n]+from:\\s*\"([^\"]+)\"([\\s\\S]*?)(?=(?:\"?[a-zA-Z0-9_]+\"?:[\\s\\n]+from:)|connections:|\\Z)");
+        java.util.regex.Matcher nodeMatcher = nodeBlockPattern.matcher(rossystemContent);
+
+        while (nodeMatcher.find()) {
+            String nodeInstance = nodeMatcher.group(1);
+            String fromRef = nodeMatcher.group(2);
+            String rest = nodeMatcher.group(3);
+
+            EngineResult engine = new EngineResult();
+            engine.instanceName = nodeInstance;
+            engine.defName = capitalize(nodeInstance) + "Engine";
+
+            String[] fromParts = fromRef.split("\\.");
+            if (fromParts.length >= 2) {
+                engine.rosPackage = fromParts[0];
+                engine.rosArtifact = fromParts[1];
+            } else {
+                engine.rosPackage = "unknown_pkg";
+                engine.rosArtifact = fromRef;
+            }
+
+            java.util.regex.Pattern nsPattern = java.util.regex.Pattern.compile("namespace:\\s*\"([^\"]+)\"");
+            java.util.regex.Matcher nsMatcher = nsPattern.matcher(rest);
+            if (nsMatcher.find()) {
+                engine.rosNamespace = nsMatcher.group(1);
+            }
+            result.engines.add(engine);
+
+            ExertResult exert = new ExertResult();
+            exert.name = capitalize(nodeInstance) + "Exert";
+            exert.engineDefName = engine.defName;
+            exert.engineInstanceName = engine.instanceName;
+
+            java.util.regex.Pattern ifaceLinePattern = java.util.regex.Pattern.compile("-\\s*\"?([a-zA-Z0-9_]+)\"?:\\s*(pub->|sub->|ss->|sc->|as->|ac->)\\s*\"([^\"]+)\"");
+            java.util.regex.Matcher ifaceLineMatcher = ifaceLinePattern.matcher(rest);
+
+            while (ifaceLineMatcher.find()) {
+                String ifaceName = ifaceLineMatcher.group(1);
+                String dir = ifaceLineMatcher.group(2);
+                String ifaceFromRef = ifaceLineMatcher.group(3);
+
+                String rosType = artifactIfaceToRosType.get(ifaceFromRef);
+                if (rosType == null) {
+                    // Fallback to deriving a standard type from interface name
+                    String shortName = capitalize(ifaceFromRef.contains("::") ? ifaceFromRef.substring(ifaceFromRef.indexOf("::") + 2) : ifaceName);
+                    rosType = "std_msgs/msg/" + shortName;
+                }
+                String shortTypeName = getShortTypeName(rosType);
+
+                if (!modeletTypeMap.containsKey(rosType)) {
+                    ModeletTypeResult mtr = new ModeletTypeResult();
+                    mtr.name = shortTypeName;
+                    mtr.rosType = rosType;
+                    modeletTypeMap.put(rosType, mtr);
+                }
+
+                ExertParamResult param = new ExertParamResult();
+                param.name = ifaceName;
+                param.modeletTypeName = shortTypeName;
+                param.isMultiple = false;
+
+                if ("pub->".equals(dir) || "sc->".equals(dir) || "ac->".equals(dir)) {
+                    exert.outParams.add(param);
+                } else {
+                    exert.inParams.add(param);
+                }
+            }
+            result.exerts.add(exert);
+        }
+
+        result.modeletTypes.addAll(modeletTypeMap.values());
+
+        // Parse connections block
+        java.util.regex.Pattern connPattern = java.util.regex.Pattern.compile("-\\s*\\[\"?([a-zA-Z0-9_]+)\"?\\s*,\\s*\"?([a-zA-Z0-9_]+)\"?\\]");
+        java.util.regex.Matcher connMatcher = connPattern.matcher(rossystemContent);
+
+        while (connMatcher.find()) {
+            String fromIface = connMatcher.group(1);
+            String toIface = connMatcher.group(2);
+
+            FlowResult flow = new FlowResult();
+            // Find which exert owns fromIface and toIface
+            for (ExertResult exert : result.exerts) {
+                for (ExertParamResult p : exert.outParams) {
+                    if (p.name.equals(fromIface)) {
+                        flow.sourceExertInstance = exert.engineInstanceName + "Exert";
+                        flow.sourceParam = p.name;
+                    }
+                }
+                for (ExertParamResult p : exert.inParams) {
+                    if (p.name.equals(toIface)) {
+                        flow.targetExertInstance = exert.engineInstanceName + "Exert";
+                        flow.targetParam = p.name;
+                    }
+                }
+            }
+            if (flow.sourceExertInstance != null && flow.targetExertInstance != null) {
+                result.flows.add(flow);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Generates valid SysML v2 textual representation from SysMLResult.
+     */
+    public String generateSysMLText(SysMLResult result) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("//****************************************************************************/\n");
+        sb.append("//  Copyright (c) 2022-2026 The CORESENSE Consortium.                        //\n");
+        sb.append("//  Licensed under the Apache License, Version 2.0                           //\n");
+        sb.append("//****************************************************************************/\n\n");
+        sb.append("package ").append(result.packageName).append(" {\n");
+        sb.append("    private import CSCore::*;\n");
+        sb.append("    private import CSRosBridge::*;\n\n");
+
+        sb.append("    // ─── Modelet Types ───\n");
+        for (ModeletTypeResult type : result.modeletTypes) {
+            sb.append("    @RosTypeMapping { rosType = \"").append(type.rosType).append("\"; }\n");
+            sb.append("    part def ").append(type.name).append(" specializes Modelet;\n\n");
+        }
+
+        sb.append("    // ─── Engine Definitions ───\n");
+        for (EngineResult engine : result.engines) {
+            sb.append("    @RosArtifactMapping { rosPackage = \"").append(engine.rosPackage)
+              .append("\"; rosArtifact = \"").append(engine.rosArtifact).append("\"");
+            if (engine.rosNamespace != null) {
+                sb.append("; rosNamespace = \"").append(engine.rosNamespace).append("\"");
+            }
+            sb.append("; }\n");
+            sb.append("    part def ").append(engine.defName).append(" specializes Engine;\n\n");
+        }
+
+        sb.append("    // ─── Exert Definitions ───\n");
+        for (ExertResult exert : result.exerts) {
+            sb.append("    action def ").append(exert.name).append(" specializes Exert {\n");
+            for (int i = 0; i < exert.inParams.size(); i++) {
+                ExertParamResult param = exert.inParams.get(i);
+                sb.append("        in ").append(param.name).append(" : ").append(param.modeletTypeName);
+                if (i == 0) {
+                    sb.append(" subsets Exert::modelets");
+                }
+                sb.append(";\n");
+            }
+            sb.append("        in ref engine : ").append(exert.engineDefName).append(" redefines Exert::engine;\n");
+            for (int i = 0; i < exert.outParams.size(); i++) {
+                ExertParamResult param = exert.outParams.get(i);
+                sb.append("        out ").append(param.name).append(" : ").append(param.modeletTypeName);
+                if (i == 0) {
+                    sb.append(" subsets Exert::output");
+                }
+                sb.append(";\n");
+            }
+            sb.append("    }\n\n");
+        }
+
+        sb.append("    // ─── System Composition ───\n");
+        sb.append("    @RosSystemMapping { systemName = \"").append(result.systemName).append("\"");
+        if (result.fromFile != null) {
+            sb.append("; fromFile = \"").append(result.fromFile).append("\"");
+        }
+        sb.append("; }\n");
+        sb.append("    part def ").append(capitalize(result.systemName)).append(" {\n");
+        for (EngineResult engine : result.engines) {
+            sb.append("        part ").append(engine.instanceName).append(" : ").append(engine.defName).append(";\n");
+        }
+        sb.append("\n");
+        for (ExertResult exert : result.exerts) {
+            sb.append("        perform action ").append(exert.engineInstanceName).append("Exert : ").append(exert.name).append(" {\n");
+            sb.append("            in ref engine = ").append(exert.engineInstanceName).append(";\n");
+            sb.append("        }\n");
+        }
+        sb.append("\n");
+        for (FlowResult flow : result.flows) {
+            sb.append("        flow from ").append(flow.sourceExertInstance).append(".").append(flow.sourceParam)
+              .append(" to ").append(flow.targetExertInstance).append(".").append(flow.targetParam).append(";\n");
+        }
+        sb.append("    }\n");
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    public static void main(String[] args) {
+        if (args.length < 1) {
+            java.lang.System.err.println("Usage: RosSystem2SysMLTransformer <input.rossystem> [nodes.ros2]");
+            java.lang.System.exit(1);
+        }
+        try {
+            String rossystemContent = java.nio.file.Files.readString(java.nio.file.Paths.get(args[0]));
+            String ros2Content = args.length > 1 ? java.nio.file.Files.readString(java.nio.file.Paths.get(args[1])) : null;
+            RosSystem2SysMLTransformer transformer = new RosSystem2SysMLTransformer();
+            SysMLResult result = transformer.transformText(rossystemContent, ros2Content);
+            java.lang.System.out.println(transformer.generateSysMLText(result));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }
