@@ -1,0 +1,21 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: SysML to RosTooling M2M Transformer
+Bundle-SymbolicName: de.fraunhofer.ipa.ros.sysml2rostooling;singleton:=true
+Bundle-Version: 1.0.0.qualifier
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Require-Bundle: org.eclipse.xtext.builder,
+ org.eclipse.xtext.ui,
+ de.fraunhofer.ipa.rossystem.xtext.ui,
+ de.fraunhofer.ipa.rossystem,
+ de.fraunhofer.ipa.ros,
+ org.eclipse.xtend.lib
+Bundle-Vendor: CoreSense project
+Automatic-Module-Name: de.fraunhofer.ipa.ros.sysml2rostooling
+Import-Package: org.apache.log4j;version="1.2.26"
+Export-Package: de.fraunhofer.ipa.ros.sysml2rostooling.parser,
+ de.fraunhofer.ipa.ros.sysml2rostooling.parser.model,
+ de.fraunhofer.ipa.ros.sysml2rostooling.transform,
+ de.fraunhofer.ipa.ros.sysml2rostooling.generator
+Bundle-Activator: de.fraunhofer.ipa.ros.sysml2rostooling.Activator
+Bundle-ActivationPolicy: lazy
