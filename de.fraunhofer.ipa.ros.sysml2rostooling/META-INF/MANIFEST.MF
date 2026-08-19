@@ -10,12 +10,11 @@ Require-Bundle: org.eclipse.xtext.builder,
  de.fraunhofer.ipa.rossystem,
  de.fraunhofer.ipa.ros,
  org.eclipse.xtend.lib
-Bundle-Vendor: CoreSense project
+Bundle-Vendor: Fraunhofer IPA
 Automatic-Module-Name: de.fraunhofer.ipa.ros.sysml2rostooling
 Import-Package: org.apache.log4j;version="1.2.26"
 Export-Package: de.fraunhofer.ipa.ros.sysml2rostooling.parser,
  de.fraunhofer.ipa.ros.sysml2rostooling.parser.model,
  de.fraunhofer.ipa.ros.sysml2rostooling.transform,
  de.fraunhofer.ipa.ros.sysml2rostooling.generator
-Bundle-Activator: de.fraunhofer.ipa.ros.sysml2rostooling.Activator
 Bundle-ActivationPolicy: lazy

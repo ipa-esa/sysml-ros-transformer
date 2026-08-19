@@ -15,5 +15,4 @@ Automatic-Module-Name: de.fraunhofer.ipa.ros.rostooling2sysml
 Import-Package: org.apache.log4j;version="1.2.26"
 Export-Package: de.fraunhofer.ipa.ros.rostooling2sysml.transform,
  de.fraunhofer.ipa.ros.rostooling2sysml.generator
-Bundle-Activator: de.fraunhofer.ipa.ros.rostooling2sysml.Activator
 Bundle-ActivationPolicy: lazy
