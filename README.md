@@ -31,17 +31,22 @@ Bi-directional model-to-model transformation between CoreSense SysML v2 models a
 java -cp <classpath> de.fraunhofer.ipa.ros.sysml2rostooling.transform.SysML2RosSystemTransformer input.sysml [additional_imports.sysml ...]
 ```
 
-## Building
+## Running Tests & CI
 
+Run the automated CI test suite covering both transformation directions:
+
+From the root directory/parent project, run:
 ```bash
-mvn clean verify
+mvn clean verify --batch-mode
 ```
 
-## Installing
+Alternatively, test this project by running the test project as a JUnit Plugin Test in Eclipse
 
-```bash
-mvn clean install
-```
+
+- **Test 1 (`SysML2RosToolingTest`)**: Transforms `de.fraunhofer.ipa.ros.sysml.transformer.tests/resources/test_model/test_annotated.sysml` and asserts the generated output matches `de.fraunhofer.ipa.ros.sysml.transformer.tests/resources/expected/test_system.rossystem`.
+- **Test 2 (`RosTooling2SysMLTest`)**: Transforms `de.fraunhofer.ipa.ros.sysml.transformer.tests/resources/expected/test_system.rossystem` (with `de.fraunhofer.ipa.ros.sysml.transformer.tests/resources/test_ros_models/test_nodes.ros2`) and asserts the generated output matches `de.fraunhofer.ipa.ros.sysml.transformer.tests/resources/expected/test_system_architecture.sysml`.
+
+A GitHub Actions CI workflow is configured in `.github/workflows/ci.yml`.
 
 ## License
 
