@@ -1,19 +1,151 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>de.fraunhofer.ipa.ros</groupId>
-        <artifactId>de.fraunhofer.ipa.ros.parent</artifactId>
-        <version>3.1.0-SNAPSHOT</version>
-        <relativePath>../RosTooling/plugins/de.fraunhofer.ipa.ros.parent/pom.xml</relativePath>
-    </parent>
+    <groupId>de.fraunhofer.ipa.ros</groupId>
     <artifactId>de.fraunhofer.ipa.ros.sysml.transformer.parent</artifactId>
-    	<version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <tycho-version>4.0.12</tycho-version>
+        <xtextVersion>2.39.0</xtextVersion>
+        <tycho.disableP2Mirrors>true</tycho.disableP2Mirrors>
+    </properties>
 
     <modules>
         <module>de.fraunhofer.ipa.ros.sysml2rostooling</module>
         <module>de.fraunhofer.ipa.ros.rostooling2sysml</module>
         <module>de.fraunhofer.ipa.ros.sysml.transformer.tests</module>
     </modules>
+
+    <repositories>
+        <!-- Eclipse Release P2 Repository -->
+        <repository>
+            <id>eclipse</id>
+            <layout>p2</layout>
+            <url>https://download.eclipse.org/releases/2025-06/</url>
+        </repository>
+        <!-- Xtext Release P2 Repository -->
+        <repository>
+            <id>xtext</id>
+            <layout>p2</layout>
+            <url>https://download.eclipse.org/modeling/tmf/xtext/updates/releases/${xtextVersion}/</url>
+        </repository>
+        <!-- GitHub Packages Registry for RosTooling -->
+        <repository>
+            <id>github-rostooling</id>
+            <name>GitHub ipa-esa RosTooling Packages</name>
+            <url>https://maven.pkg.github.com/ipa-esa/RosTooling</url>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+        </repository>
+    </repositories>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.eclipse.xtend</groupId>
+                    <artifactId>xtend-maven-plugin</artifactId>
+                    <version>${xtextVersion}</version>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>compile</goal>
+                                <goal>xtend-install-debug-info</goal>
+                                <goal>testCompile</goal>
+                                <goal>xtend-test-install-debug-info</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <outputDirectory>xtend-gen</outputDirectory>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <version>3.3.2</version>
+                    <executions>
+                        <execution>
+                            <id>xtend-gen-clean</id>
+                            <goals>
+                                <goal>clean</goal>
+                            </goals>
+                            <configuration>
+                                <filesets>
+                                    <fileset>
+                                        <directory>${basedir}/xtend-gen</directory>
+                                        <includes>
+                                            <include>**/*</include>
+                                        </includes>
+                                    </fileset>
+                                </filesets>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-maven-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <extensions>true</extensions>
+            </plugin>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>target-platform-configuration</artifactId>
+                <version>${tycho-version}</version>
+                <configuration>
+                    <executionEnvironment>JavaSE-21</executionEnvironment>
+                    <environments>
+                        <environment>
+                            <os>linux</os>
+                            <ws>gtk</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                        <environment>
+                            <os>win32</os>
+                            <ws>win32</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                        <environment>
+                            <os>macosx</os>
+                            <ws>cocoa</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                    </environments>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-surefire-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <configuration>
+                    <failIfNoTests>false</failIfNoTests>
+                    <useUIHarness>false</useUIHarness>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-compiler-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <configuration>
+                    <compilerArgument>-err:-forbidden</compilerArgument>
+                    <useProjectSettings>false</useProjectSettings>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
