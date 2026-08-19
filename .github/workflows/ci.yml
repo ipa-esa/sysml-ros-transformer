@@ -21,8 +21,11 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
           server-id: github-rostooling
-          server-username: ${{ github.actor }}
-          server-password: ${{ secrets.ROSTOOLING_TOKEN || secrets.GITHUB_TOKEN }}
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
 
       - name: Build and Test with Maven
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.ROSTOOLING_TOKEN }}
         run: mvn clean verify --batch-mode
