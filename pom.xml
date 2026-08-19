@@ -23,6 +23,19 @@
         <module>de.fraunhofer.ipa.ros.sysml.transformer.tests</module>
     </modules>
 
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub sysml-ros-transformer Packages</name>
+            <url>https://maven.pkg.github.com/ipa-esa/sysml-ros-transformer</url>
+        </repository>
+        <snapshotRepository>
+            <id>github</id>
+            <name>GitHub sysml-ros-transformer Snapshots</name>
+            <url>https://maven.pkg.github.com/ipa-esa/sysml-ros-transformer</url>
+        </snapshotRepository>
+    </distributionManagement>
+
     <repositories>
         <!-- Eclipse Release P2 Repository -->
         <repository>
@@ -38,7 +51,7 @@
         </repository>
         <!-- GitHub Packages Registry for RosTooling -->
         <repository>
-            <id>github-rostooling</id>
+            <id>github</id>
             <name>GitHub ipa-esa RosTooling Packages</name>
             <url>https://maven.pkg.github.com/ipa-esa/RosTooling</url>
             <snapshots>
