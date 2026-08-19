@@ -14,5 +14,6 @@
     <modules>
         <module>de.fraunhofer.ipa.ros.sysml2rostooling</module>
         <module>de.fraunhofer.ipa.ros.rostooling2sysml</module>
+        <module>de.fraunhofer.ipa.ros.sysml.transformer.tests</module>
     </modules>
 </project>

@@ -1,0 +1,14 @@
+test_system:
+  fromFile: "test_pkg/launch/test.launch.py"
+  nodes:
+    "camera":
+      from: "test_drivers.camera_driver"
+      interfaces:
+        - "camera_image": pub-> "camera_driver::image"
+    "detector":
+      from: "test_perception.object_detector"
+      interfaces:
+        - "detector_image": sub-> "object_detector::image"
+        - "detector_detections": pub-> "object_detector::detections"
+  connections:
+    - ["camera_image", "detector_image"]

@@ -1,0 +1,19 @@
+# ROS message type definitions for the test fixture.
+# These define the message types referenced by the .ros2 node artifacts.
+
+sensor_msgs:
+  msgs:
+    Image:
+      message
+        uint32 height
+        uint32 width
+        string encoding
+        uint8 is_bigendian
+        uint32 step
+        uint8[] data
+
+vision_msgs:
+  msgs:
+    Detection2DArray:
+      message
+        string header
