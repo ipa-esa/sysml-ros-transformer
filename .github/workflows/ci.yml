@@ -6,16 +6,23 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      packages: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 21 & GitHub Package Authentication
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
+          server-id: github-rostooling
+          server-username: ${{ github.actor }}
+          server-password: ${{ secrets.ROSTOOLING_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Build and Test with Maven
         run: mvn clean verify --batch-mode
