@@ -1,0 +1,8 @@
+target/
+bin/
+*.class
+.settings/
+xtend-gen/
+src-gen/
+.metadata/
+*.log
