@@ -1,5 +1,6 @@
 # SysML ↔ RosTooling Bi-directional M2M Transformer
 [![SysML ↔ RosTooling Bi-directional M2M Transformer Tests](https://github.com/ipa-esa/sysml-ros-transformer/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ipa-esa/sysml-ros-transformer/actions/workflows/ci.yml)
+![Funded by the European Union](images/EU_funded_en.jpg)
 
 Bi-directional model-to-model transformation between CoreSense SysML v2 models and RosTooling `.rossystem` models.
 
