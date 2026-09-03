@@ -7,6 +7,8 @@ package de.fraunhofer.ipa.ros.rostooling2sysml.transform;
 
 import java.util.*;
 
+import org.eclipse.emf.ecore.InternalEObject;
+
 import system.System;
 import system.RosNode;
 import system.SubSystem;
@@ -33,7 +35,6 @@ import ros.ServiceSpec;
 import ros.ActionSpec;
 import ros.Package;
 import ros.Artifact;
-import ros.AmentPackage;
 
 /**
  * Transforms a ROS System model into a SysMLResult data structure.
@@ -85,10 +86,17 @@ public class RosSystem2SysMLTransformer {
     }
 
     public SysMLResult transform(System rossystem) {
+        return transform(rossystem, null, null);
+    }
+
+    public SysMLResult transform(System rossystem, String ros2Content, String rossystemContent) {
         SysMLResult result = new SysMLResult();
         result.systemName = rossystem.getName();
         result.fromFile = rossystem.getFromFile();
         result.packageName = (result.systemName != null ? result.systemName : "Unknown") + "_architecture";
+
+        Map<String, String> ifaceTypeMap = parseRos2InterfaceTypes(ros2Content);
+        Map<String, String[]> nodeArtifactMap = parseNodeArtifactMappings(rossystemContent);
 
         Map<String, ModeletTypeResult> modeletTypeMap = new LinkedHashMap<>();
 
@@ -104,7 +112,7 @@ public class RosSystem2SysMLTransformer {
                 engine.rosNamespace = node.getNamespace();
                 
                 Node rosNodeRef = node.getFrom();
-                if (rosNodeRef != null && rosNodeRef.eContainer() instanceof Artifact) {
+                if (rosNodeRef != null && !rosNodeRef.eIsProxy() && rosNodeRef.eContainer() instanceof Artifact) {
                     Artifact artifact = (Artifact) rosNodeRef.eContainer();
                     engine.rosArtifact = artifact.getName();
                     if (artifact.eContainer() instanceof Package) {
@@ -112,6 +120,40 @@ public class RosSystem2SysMLTransformer {
                         engine.rosPackage = pkg.getName();
                     }
                 }
+
+                // If proxy or uncontained, resolve from proxy URI or text map
+                if (engine.rosPackage == null || engine.rosArtifact == null || "null".equals(engine.rosPackage)) {
+                    if (rosNodeRef != null && rosNodeRef.eIsProxy()) {
+                        org.eclipse.emf.common.util.URI proxyUri = ((InternalEObject) rosNodeRef).eProxyURI();
+                        if (proxyUri != null && proxyUri.fragment() != null) {
+                            String frag = proxyUri.fragment();
+                            int lastSlash = frag.lastIndexOf('/');
+                            String refStr = lastSlash >= 0 ? frag.substring(lastSlash + 1) : frag;
+                            if (refStr.contains(".")) {
+                                String[] parts = refStr.split("\\.");
+                                if (parts.length >= 2) {
+                                    engine.rosPackage = parts[0];
+                                    engine.rosArtifact = parts[1];
+                                }
+                            }
+                        }
+                    }
+                    if (engine.rosPackage == null || engine.rosArtifact == null || "null".equals(engine.rosPackage)) {
+                        String[] mapped = nodeArtifactMap.get(node.getName());
+                        if (mapped != null) {
+                            engine.rosPackage = mapped[0];
+                            engine.rosArtifact = mapped[1];
+                        }
+                    }
+                }
+
+                if (engine.rosPackage == null || "null".equals(engine.rosPackage)) {
+                    engine.rosPackage = engine.instanceName + "_pkg";
+                }
+                if (engine.rosArtifact == null || "null".equals(engine.rosArtifact)) {
+                    engine.rosArtifact = engine.instanceName + "_artifact";
+                }
+
                 result.engines.add(engine);
 
                 // 4. Build Exerts
@@ -122,6 +164,9 @@ public class RosSystem2SysMLTransformer {
 
                 for (RosInterface iface : node.getRosinterfaces()) {
                     String rosType = getRosType(iface.getReference());
+                    if (rosType == null || "unknown/msg/Unknown".equals(rosType)) {
+                        rosType = resolveInterfaceRosType(iface, engine.rosArtifact, ifaceTypeMap);
+                    }
                     String shortName = getShortTypeName(rosType);
                     
                     if (rosType != null && !modeletTypeMap.containsKey(rosType)) {
@@ -189,42 +234,118 @@ public class RosSystem2SysMLTransformer {
     private String getRosType(InterfaceReference ref) {
         if (ref instanceof RosPublisherReference) {
             Publisher pub = ((RosPublisherReference) ref).getFrom();
-            return pub != null ? getTopicSpecRosType(pub.getMessage()) : null;
+            return (pub != null && !pub.eIsProxy()) ? getTopicSpecRosType(pub.getMessage()) : null;
         } else if (ref instanceof RosSubscriberReference) {
             Subscriber sub = ((RosSubscriberReference) ref).getFrom();
-            return sub != null ? getTopicSpecRosType(sub.getMessage()) : null;
+            return (sub != null && !sub.eIsProxy()) ? getTopicSpecRosType(sub.getMessage()) : null;
         } else if (ref instanceof RosServiceServerReference) {
             ServiceServer ss = ((RosServiceServerReference) ref).getFrom();
-            return ss != null ? getServiceSpecRosType(ss.getService()) : null;
+            return (ss != null && !ss.eIsProxy()) ? getServiceSpecRosType(ss.getService()) : null;
         } else if (ref instanceof RosServiceClientReference) {
             ServiceClient sc = ((RosServiceClientReference) ref).getFrom();
-            return sc != null ? getServiceSpecRosType(sc.getService()) : null;
+            return (sc != null && !sc.eIsProxy()) ? getServiceSpecRosType(sc.getService()) : null;
         } else if (ref instanceof RosActionServerReference) {
             ActionServer as = ((RosActionServerReference) ref).getFrom();
-            return as != null ? getActionSpecRosType(as.getAction()) : null;
+            return (as != null && !as.eIsProxy()) ? getActionSpecRosType(as.getAction()) : null;
         } else if (ref instanceof RosActionClientReference) {
             ActionClient ac = ((RosActionClientReference) ref).getFrom();
-            return ac != null ? getActionSpecRosType(ac.getAction()) : null;
+            return (ac != null && !ac.eIsProxy()) ? getActionSpecRosType(ac.getAction()) : null;
         }
         return null;
     }
 
+    private String resolveInterfaceRosType(RosInterface iface, String artifactName, Map<String, String> ifaceTypeMap) {
+        InterfaceReference ref = iface.getReference();
+        if (ref != null) {
+            Object fromObj = getReferenceFrom(ref);
+            if (fromObj instanceof InternalEObject && ((InternalEObject) fromObj).eIsProxy()) {
+                org.eclipse.emf.common.util.URI proxyUri = ((InternalEObject) fromObj).eProxyURI();
+                if (proxyUri != null && proxyUri.fragment() != null) {
+                    String frag = proxyUri.fragment();
+                    int lastSlash = frag.lastIndexOf('/');
+                    String refStr = lastSlash >= 0 ? frag.substring(lastSlash + 1) : frag;
+                    if (ifaceTypeMap.containsKey(refStr)) {
+                        return ifaceTypeMap.get(refStr);
+                    }
+                    if (refStr.contains("::")) {
+                        String subName = refStr.substring(refStr.indexOf("::") + 2);
+                        if (ifaceTypeMap.containsKey(subName)) {
+                            return ifaceTypeMap.get(subName);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (artifactName != null && ifaceTypeMap.containsKey(artifactName + "::" + iface.getName())) {
+            return ifaceTypeMap.get(artifactName + "::" + iface.getName());
+        }
+
+        if (ifaceTypeMap.containsKey(iface.getName())) {
+            return ifaceTypeMap.get(iface.getName());
+        }
+
+        for (Map.Entry<String, String> entry : ifaceTypeMap.entrySet()) {
+            String key = entry.getKey();
+            String keyName = key.contains("::") ? key.substring(key.indexOf("::") + 2) : key;
+            if (iface.getName().endsWith(keyName) || iface.getName().contains(keyName)) {
+                return entry.getValue();
+            }
+        }
+
+        return inferRosTypeFromInterfaceName(iface.getName());
+    }
+
+    private Object getReferenceFrom(InterfaceReference ref) {
+        if (ref instanceof RosPublisherReference) return ((RosPublisherReference) ref).getFrom();
+        if (ref instanceof RosSubscriberReference) return ((RosSubscriberReference) ref).getFrom();
+        if (ref instanceof RosServiceServerReference) return ((RosServiceServerReference) ref).getFrom();
+        if (ref instanceof RosServiceClientReference) return ((RosServiceClientReference) ref).getFrom();
+        if (ref instanceof RosActionServerReference) return ((RosActionServerReference) ref).getFrom();
+        if (ref instanceof RosActionClientReference) return ((RosActionClientReference) ref).getFrom();
+        return null;
+    }
+
+    private String inferRosTypeFromInterfaceName(String ifaceName) {
+        if (ifaceName == null) return "std_msgs/msg/String";
+        String lower = ifaceName.toLowerCase();
+        if (lower.contains("image")) return "sensor_msgs/msg/Image";
+        if (lower.contains("detect")) return "vision_msgs/msg/Detection2DArray";
+        if (lower.contains("camera_info")) return "sensor_msgs/msg/CameraInfo";
+        if (lower.contains("scan") || lower.contains("laser")) return "sensor_msgs/msg/LaserScan";
+        if (lower.contains("cloud") || lower.contains("points")) return "sensor_msgs/msg/PointCloud2";
+        if (lower.contains("twist") || lower.contains("cmd_vel") || lower.contains("vel")) return "geometry_msgs/msg/Twist";
+        if (lower.contains("odom")) return "nav_msgs/msg/Odometry";
+        if (lower.contains("pose")) return "geometry_msgs/msg/PoseStamped";
+        if (lower.contains("imu")) return "sensor_msgs/msg/Imu";
+        return "std_msgs/msg/" + capitalize(ifaceName);
+    }
+
     private String getTopicSpecRosType(TopicSpec spec) {
-        if (spec == null) return "unknown/msg/Unknown";
-        Package pkg = (Package) spec.eContainer();
-        return pkg.getName() + "/msg/" + spec.getName();
+        if (spec == null || spec.eIsProxy()) return null;
+        if (spec.eContainer() instanceof Package) {
+            Package pkg = (Package) spec.eContainer();
+            return pkg.getName() + "/msg/" + spec.getName();
+        }
+        return "std_msgs/msg/" + spec.getName();
     }
 
     private String getServiceSpecRosType(ServiceSpec spec) {
-        if (spec == null) return "unknown/srv/Unknown";
-        Package pkg = (Package) spec.eContainer();
-        return pkg.getName() + "/srv/" + spec.getName();
+        if (spec == null || spec.eIsProxy()) return null;
+        if (spec.eContainer() instanceof Package) {
+            Package pkg = (Package) spec.eContainer();
+            return pkg.getName() + "/srv/" + spec.getName();
+        }
+        return "std_msgs/srv/" + spec.getName();
     }
 
     private String getActionSpecRosType(ActionSpec spec) {
-        if (spec == null) return "unknown/action/Unknown";
-        Package pkg = (Package) spec.eContainer();
-        return pkg.getName() + "/action/" + spec.getName();
+        if (spec == null || spec.eIsProxy()) return null;
+        if (spec.eContainer() instanceof Package) {
+            Package pkg = (Package) spec.eContainer();
+            return pkg.getName() + "/action/" + spec.getName();
+        }
+        return "std_msgs/action/" + spec.getName();
     }
 
     private String getShortTypeName(String rosType) {
@@ -233,13 +354,7 @@ public class RosSystem2SysMLTransformer {
         return lastSlash >= 0 ? rosType.substring(lastSlash + 1) : rosType;
     }
 
-    /**
-     * Transforms .rossystem content (and optional .ros2 content for types) into a SysMLResult.
-     */
-    public SysMLResult transformText(String rossystemContent, String ros2Content) {
-        SysMLResult result = new SysMLResult();
-
-        // Extract interface type mappings from ros2 content if available
+    public static Map<String, String> parseRos2InterfaceTypes(String ros2Content) {
         Map<String, String> artifactIfaceToRosType = new LinkedHashMap<>();
         if (ros2Content != null) {
             String currentArtifact = null;
@@ -256,10 +371,40 @@ public class RosSystem2SysMLTransformer {
                     String rosType = trimmed.substring("type:".length()).trim().replace("\"", "");
                     if (currentArtifact != null && currentIface != null) {
                         artifactIfaceToRosType.put(currentArtifact + "::" + currentIface, rosType);
+                        artifactIfaceToRosType.put(currentIface, rosType);
                     }
                 }
             }
         }
+        return artifactIfaceToRosType;
+    }
+
+    public static Map<String, String[]> parseNodeArtifactMappings(String rossystemContent) {
+        Map<String, String[]> nodeToPkgArtifact = new LinkedHashMap<>();
+        if (rossystemContent != null) {
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("\"?([a-zA-Z0-9_]+)\"?:[\\s\\n]+from:\\s*\"([^\"]+)\"");
+            java.util.regex.Matcher m = p.matcher(rossystemContent);
+            while (m.find()) {
+                String nodeName = m.group(1);
+                String fromRef = m.group(2);
+                String[] parts = fromRef.split("\\.");
+                if (parts.length >= 2) {
+                    nodeToPkgArtifact.put(nodeName, new String[]{parts[0], parts[1]});
+                } else {
+                    nodeToPkgArtifact.put(nodeName, new String[]{"unknown_pkg", fromRef});
+                }
+            }
+        }
+        return nodeToPkgArtifact;
+    }
+
+    /**
+     * Transforms .rossystem content (and optional .ros2 content for types) into a SysMLResult.
+     */
+    public SysMLResult transformText(String rossystemContent, String ros2Content) {
+        SysMLResult result = new SysMLResult();
+
+        Map<String, String> artifactIfaceToRosType = parseRos2InterfaceTypes(ros2Content);
 
         // Parse rossystem content
         java.util.regex.Pattern sysNamePattern = java.util.regex.Pattern.compile("^\\s*([a-zA-Z0-9_]+):", java.util.regex.Pattern.MULTILINE);
@@ -323,9 +468,10 @@ public class RosSystem2SysMLTransformer {
 
                 String rosType = artifactIfaceToRosType.get(ifaceFromRef);
                 if (rosType == null) {
-                    // Fallback to deriving a standard type from interface name
-                    String shortName = capitalize(ifaceFromRef.contains("::") ? ifaceFromRef.substring(ifaceFromRef.indexOf("::") + 2) : ifaceName);
-                    rosType = "std_msgs/msg/" + shortName;
+                    rosType = artifactIfaceToRosType.get(ifaceName);
+                }
+                if (rosType == null) {
+                    rosType = inferRosTypeFromInterfaceName(ifaceFromRef.contains("::") ? ifaceFromRef.substring(ifaceFromRef.indexOf("::") + 2) : ifaceName);
                 }
                 String shortTypeName = getShortTypeName(rosType);
 
@@ -361,7 +507,6 @@ public class RosSystem2SysMLTransformer {
             String toIface = connMatcher.group(2);
 
             FlowResult flow = new FlowResult();
-            // Find which exert owns fromIface and toIface
             for (ExertResult exert : result.exerts) {
                 for (ExertParamResult p : exert.outParams) {
                     if (p.name.equals(fromIface)) {
@@ -376,9 +521,7 @@ public class RosSystem2SysMLTransformer {
                     }
                 }
             }
-            if (flow.sourceExertInstance != null && flow.targetExertInstance != null) {
-                result.flows.add(flow);
-            }
+            result.flows.add(flow);
         }
 
         return result;

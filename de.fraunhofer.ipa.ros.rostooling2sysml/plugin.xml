@@ -19,31 +19,25 @@
    <extension
          point="org.eclipse.ui.menus">
       <menuContribution
-             allPopups="false"
-             locationURI="popup:org.eclipse.ui.popup.any?after=additions">
+            allPopups="false"
+            locationURI="popup:org.eclipse.ui.popup.any?after=additions">
       <command
-               commandId="de.fraunhofer.ipa.ros.rostooling2sysml.command"
-               >
+                commandId="de.fraunhofer.ipa.ros.rostooling2sysml.command">
              <visibleWhen
                    checkEnabled="false">
-                <and>
-                   <with
-                         variable="selection">
-                      <count
-                            value="1">
-                      </count>
-                   </with>
-                   <iterate
-                         ifEmpty="false">
-                           <test
-                                 property="org.eclipse.core.resources.extension"
-                                 value="rossystem">
-                           </test>
-                   </iterate>
-                </and>
+                <iterate
+                      ifEmpty="false">
+                   <adapt
+                         type="org.eclipse.core.resources.IFile">
+                      <test
+                            property="org.eclipse.core.resources.extension"
+                            value="rossystem">
+                      </test>
+                   </adapt>
+                </iterate>
              </visibleWhen>
-         </command>
-      </menuContribution>
-   </extension>
+          </command>
+       </menuContribution>
+    </extension>
 
 </plugin>
