@@ -9,7 +9,8 @@ Require-Bundle: org.eclipse.xtext.builder,
  de.fraunhofer.ipa.rossystem.xtext.ui,
  de.fraunhofer.ipa.rossystem,
  de.fraunhofer.ipa.ros,
- org.eclipse.xtend.lib
+ org.eclipse.xtend.lib,
+ org.eclipse.ui.ide
 Bundle-Vendor: Fraunhofer IPA
 Automatic-Module-Name: de.fraunhofer.ipa.ros.sysml2rostooling
 Import-Package: org.apache.log4j;version="1.2.26"

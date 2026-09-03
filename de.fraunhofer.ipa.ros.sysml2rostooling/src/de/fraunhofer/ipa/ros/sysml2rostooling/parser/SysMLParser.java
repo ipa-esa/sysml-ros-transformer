@@ -57,7 +57,7 @@ public class SysMLParser {
             int closeBracePos = findMatchingBrace(stripped, openBracePos);
             if (closeBracePos != -1) {
                 String pkgContent = stripped.substring(openBracePos + 1, closeBracePos);
-                parsePackage(pkgContent, pkgName, model);
+                parsePackage(pkgContent, pkgName, fileName, model);
                 searchStart = closeBracePos + 1;
             } else {
                 searchStart = pkgMatcher.end();
@@ -74,9 +74,10 @@ public class SysMLParser {
         return result;
     }
 
-    private void parsePackage(String packageContent, String packageName, SysMLModel model) {
+    private void parsePackage(String packageContent, String packageName, String fileName, SysMLModel model) {
         SysMLPackage pkg = new SysMLPackage();
         pkg.setName(packageName);
+        pkg.setSourceFilePath(fileName);
         
         Matcher impMatcher = IMPORT_PATTERN.matcher(packageContent);
         while (impMatcher.find()) {

@@ -20,7 +20,7 @@ import de.fraunhofer.ipa.ros.sysml2rostooling.parser.model.SysMLPartDef;
 import de.fraunhofer.ipa.ros.sysml2rostooling.parser.model.SysMLPartUsage;
 
 /**
- * Transforms a SysMLModel into a RosSystemResult.
+ * Transforms a SysMLModel into a RosSystemResult using Strategy 1 (explicit @RosSystemMapping).
  */
 public class SysML2RosSystemTransformer {
 
@@ -70,114 +70,152 @@ public class SysML2RosSystemTransformer {
         public String getToInterface() { return toInterface; }
     }
 
+    /**
+     * Transforms the given SysMLModel into a list of RosSystemResult objects.
+     * Enforces Strategy 1: The model must contain at least one root PartDef annotated with @RosSystemMapping.
+     *
+     * @param model the parsed SysML model across one or more files
+     * @return the list of generated RosSystemResult objects
+     * @throws IllegalArgumentException if no @RosSystemMapping is present in the model
+     */
     public List<RosSystemResult> transform(SysMLModel model) {
+        return transform(model, null);
+    }
+
+    /**
+     * Transforms the given SysMLModel into a list of RosSystemResult objects,
+     * filtering for system root(s) defined in the specified targetFilePath.
+     *
+     * @param model the parsed SysML model across one or more files
+     * @param targetFilePath optional path of the selected SysML file to transform
+     * @return the list of generated RosSystemResult objects
+     * @throws IllegalArgumentException if no @RosSystemMapping is present in the target file
+     */
+    public List<RosSystemResult> transform(SysMLModel model, String targetFilePath) {
+        List<SysMLPartDef> systemRoots = model.findSystemRoots(targetFilePath);
+        if (systemRoots.isEmpty()) {
+            if (targetFilePath != null) {
+                throw new IllegalArgumentException(
+                    "No system composition annotated with @RosSystemMapping was found in the selected file: " + targetFilePath + ". " +
+                    "Please select a file containing the root system or annotate the main system with @RosSystemMapping(systemName = \"...\")."
+                );
+            } else {
+                throw new IllegalArgumentException(
+                    "No system composition annotated with @RosSystemMapping was found. " +
+                    "Please annotate the root system part definition with @RosSystemMapping(systemName = \"...\") to specify the main system."
+                );
+            }
+        }
+
         List<RosSystemResult> results = new ArrayList<>();
 
-        for (SysMLPackage pkg : model.getPackages()) {
+        for (SysMLPartDef systemPart : systemRoots) {
             RosSystemResult result = new RosSystemResult();
+            SysMLMetadata sysMeta = systemPart.getMetadata("RosSystemMapping");
             
-            // Step 1: Find the part def with @RosSystemMapping
-            SysMLPartDef systemPart = null;
-            for (SysMLPartDef p : pkg.getPartDefs()) {
-                if (p.hasMetadata("RosSystemMapping")) {
-                    systemPart = p;
-                    break;
-                }
+            result.systemName = sysMeta.getAttribute("systemName");
+            if (result.systemName == null || result.systemName.isBlank()) {
+                result.systemName = systemPart.getName().toLowerCase();
             }
-            if (systemPart != null) {
-                SysMLMetadata sysMeta = systemPart.getMetadata("RosSystemMapping");
-                result.systemName = sysMeta.getAttribute("systemName");
-                if (result.systemName == null) {
-                    result.systemName = systemPart.getName().toLowerCase();
-                }
-                result.fromFile = sysMeta.getAttribute("fromFile");
-            } else {
-                result.systemName = pkg.getName();
-            }
+            result.fromFile = sysMeta.getAttribute("fromFile");
 
-            // Map PartDef names to instance names from systemPart
+            SysMLPackage systemPkg = model.findPackageContaining(systemPart);
+
+            // Map PartDef names to instance names
             Map<String, String> partDefToInstanceName = new LinkedHashMap<>();
             Map<String, String> actionUsageToNodeName = new LinkedHashMap<>();
-            if (systemPart != null) {
+            
+            for (SysMLPartUsage usage : systemPart.getParts()) {
+                partDefToInstanceName.put(usage.getTypeName(), usage.getName());
+            }
+
+            for (SysMLActionUsage actionUsage : systemPart.getActions()) {
+                SysMLActionDef actionDef = model.findActionDef(actionUsage.getTypeName());
+                if (actionDef != null) {
+                    for (SysMLParameter inParam : actionDef.getInParams()) {
+                        if (inParam.isEngineRedefinition()) {
+                            String nodeInstance = partDefToInstanceName.get(inParam.getTypeName());
+                            if (nodeInstance == null) {
+                                nodeInstance = toDefaultInstanceName(inParam.getTypeName());
+                            }
+                            actionUsageToNodeName.put(actionUsage.getName(), nodeInstance);
+                        }
+                    }
+                }
+            }
+
+            // Determine which component part defs belong to this system
+            List<SysMLPartDef> componentsToInclude = new ArrayList<>();
+            if (!systemPart.getParts().isEmpty()) {
+                // Multi-file composition style: part defs referenced by part usages
                 for (SysMLPartUsage usage : systemPart.getParts()) {
-                    partDefToInstanceName.put(usage.getTypeName(), usage.getName());
+                    SysMLPartDef compDef = model.findPartDef(usage.getTypeName());
+                    if (compDef != null && compDef.hasMetadata("RosArtifactMapping")) {
+                        componentsToInclude.add(compDef);
+                    }
                 }
-                for (SysMLActionUsage actionUsage : systemPart.getActions()) {
-                    SysMLActionDef actionDef = model.findActionDef(actionUsage.getTypeName());
-                    if (actionDef != null) {
-                        for (SysMLParameter inParam : actionDef.getInParams()) {
-                            if (inParam.isEngineRedefinition()) {
-                                String nodeInstance = partDefToInstanceName.get(inParam.getTypeName());
-                                if (nodeInstance == null) {
-                                    nodeInstance = toDefaultInstanceName(inParam.getTypeName());
-                                }
-                                actionUsageToNodeName.put(actionUsage.getName(), nodeInstance);
-                            }
-                        }
+            } else if (systemPkg != null) {
+                // Single-package style fallback: include artifact part defs in the same package
+                for (SysMLPartDef p : systemPkg.getPartDefs()) {
+                    if (p.hasMetadata("RosArtifactMapping")) {
+                        componentsToInclude.add(p);
                     }
                 }
             }
 
-            // Step 2 & 3: Find all part defs with @RosArtifactMapping
-            for (SysMLPartDef p : pkg.getPartDefs()) {
-                if (p.hasMetadata("RosArtifactMapping")) {
-                    RosNodeResult node = new RosNodeResult();
-                    String instanceName = partDefToInstanceName.get(p.getName());
-                    if (instanceName == null) {
-                        instanceName = toDefaultInstanceName(p.getName());
-                    }
-                    node.name = instanceName;
-
-                    SysMLMetadata artiMeta = p.getMetadata("RosArtifactMapping");
-                    String rosPackage = artiMeta.getAttribute("rosPackage");
-                    String rosArtifact = artiMeta.getAttribute("rosArtifact");
-                    node.fromRef = rosPackage + "." + rosArtifact;
-                    node.namespace = artiMeta.getAttribute("rosNamespace");
-                    
-                    // Step 3: Find Exert specializations that belong to this node
-                    for (SysMLActionDef action : pkg.getActionDefs()) {
-                        if (action.specializesExert()) {
-                            // Check if this action belongs to the current part p
-                            boolean belongsToNode = false;
-                            for (SysMLParameter inParam : action.getInParams()) {
-                                if (inParam.isEngineRedefinition() && inParam.getTypeName().equals(p.getName())) {
-                                    belongsToNode = true;
-                                    break;
-                                }
-                            }
-                            if (belongsToNode) {
-                                // Map interfaces for all parameters except engine and generic modelets placeholder
-                                for (SysMLParameter inParam : action.getInParams()) {
-                                    if (inParam.isEngineRedefinition()) {
-                                        continue;
-                                    }
-                                    if (inParam.isModeletsRedefinition() && ("Modelet".equals(inParam.getTypeName()) || "Base::Anything".equals(inParam.getTypeName()))) {
-                                        continue;
-                                    }
-                                    RosInterfaceResult iface = createInterface(inParam, "sub->", node.name, rosArtifact, model);
-                                    node.interfaces.add(iface);
-                                }
-                                for (SysMLParameter outParam : action.getOutParams()) {
-                                    if (outParam.isOutputRedefinition() && ("Base::Anything".equals(outParam.getTypeName()) || "Modelet".equals(outParam.getTypeName()))) {
-                                        continue;
-                                    }
-                                    RosInterfaceResult iface = createInterface(outParam, "pub->", node.name, rosArtifact, model);
-                                    node.interfaces.add(iface);
-                                }
-                            }
-                        }
-                    }
-                    result.nodes.add(node);
-                }
+            // If still empty, scan entire model for artifact part defs
+            if (componentsToInclude.isEmpty()) {
+                componentsToInclude = model.findAllArtifactPartDefs();
             }
 
-            // Step 4: Map flows
-            for (SysMLFlow flow : pkg.getFlows()) {
-                String sourceNode = actionUsageToNodeName.getOrDefault(flow.getSourcePart(), flow.getSourcePart());
-                String targetNode = actionUsageToNodeName.getOrDefault(flow.getTargetPart(), flow.getTargetPart());
-                String fromInterface = sourceNode + "_" + flow.getSourceFeature();
-                String toInterface = targetNode + "_" + flow.getTargetFeature();
-                result.connections.add(new RosConnectionResult(fromInterface, toInterface));
+            // Create RosNodeResult for each component
+            for (SysMLPartDef p : componentsToInclude) {
+                RosNodeResult node = new RosNodeResult();
+                String instanceName = partDefToInstanceName.get(p.getName());
+                if (instanceName == null) {
+                    instanceName = toDefaultInstanceName(p.getName());
+                }
+                node.name = instanceName;
+
+                SysMLMetadata artiMeta = p.getMetadata("RosArtifactMapping");
+                String rosPackage = artiMeta.getAttribute("rosPackage");
+                String rosArtifact = artiMeta.getAttribute("rosArtifact");
+                node.fromRef = rosPackage + "." + rosArtifact;
+                node.namespace = artiMeta.getAttribute("rosNamespace");
+                
+                // Find Exert specializations for this node across all packages
+                SysMLActionDef action = model.findActionDefForEngine(p.getName());
+                if (action != null) {
+                    for (SysMLParameter inParam : action.getInParams()) {
+                        if (inParam.isEngineRedefinition()) {
+                            continue;
+                        }
+                        if (inParam.isModeletsRedefinition() && ("Modelet".equals(inParam.getTypeName()) || "Base::Anything".equals(inParam.getTypeName()))) {
+                            continue;
+                        }
+                        RosInterfaceResult iface = createInterface(inParam, "sub->", node.name, rosArtifact, model);
+                        node.interfaces.add(iface);
+                    }
+                    for (SysMLParameter outParam : action.getOutParams()) {
+                        if (outParam.isOutputRedefinition() && ("Base::Anything".equals(outParam.getTypeName()) || "Modelet".equals(outParam.getTypeName()))) {
+                            continue;
+                        }
+                        RosInterfaceResult iface = createInterface(outParam, "pub->", node.name, rosArtifact, model);
+                        node.interfaces.add(iface);
+                    }
+                }
+                result.nodes.add(node);
+            }
+
+            // Map flows from the system package
+            if (systemPkg != null) {
+                for (SysMLFlow flow : systemPkg.getFlows()) {
+                    String sourceNode = actionUsageToNodeName.getOrDefault(flow.getSourcePart(), flow.getSourcePart());
+                    String targetNode = actionUsageToNodeName.getOrDefault(flow.getTargetPart(), flow.getTargetPart());
+                    String fromInterface = sourceNode + "_" + flow.getSourceFeature();
+                    String toInterface = targetNode + "_" + flow.getTargetFeature();
+                    result.connections.add(new RosConnectionResult(fromInterface, toInterface));
+                }
             }
 
             results.add(result);
@@ -282,7 +320,9 @@ public class SysML2RosSystemTransformer {
                 System.out.println(transformer.generateText(result));
             }
         } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
             e.printStackTrace();
+            System.exit(1);
         }
     }
 }
