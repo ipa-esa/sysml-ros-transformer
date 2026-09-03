@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: SysML to RosTooling Transformer Tests
 Bundle-SymbolicName: de.fraunhofer.ipa.ros.sysml.transformer.tests;singleton:=true
-Bundle-Version: 1.0.0.qualifier
+Bundle-Version: 1.0.1
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Require-Bundle: org.eclipse.core.runtime,
  org.junit;bundle-version="4.13.0",

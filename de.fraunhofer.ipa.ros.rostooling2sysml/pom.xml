@@ -4,11 +4,11 @@
     <parent>
         <groupId>de.fraunhofer.ipa.ros</groupId>
         <artifactId>de.fraunhofer.ipa.ros.sysml.transformer.parent</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>1.0.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <artifactId>de.fraunhofer.ipa.ros.rostooling2sysml</artifactId>
-    	<version>1.0.0-SNAPSHOT</version>
+    	<version>1.0.1</version>
     <packaging>eclipse-plugin</packaging>
 
     <build>
