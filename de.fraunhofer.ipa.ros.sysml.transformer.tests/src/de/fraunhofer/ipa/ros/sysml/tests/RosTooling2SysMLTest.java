@@ -67,6 +67,18 @@ public class RosTooling2SysMLTest {
 
         Assert.assertFalse("Should have extracted engines", result.engines.isEmpty());
 
+        for (RosSystem2SysMLTransformer.EngineResult engine : result.engines) {
+            Assert.assertNotNull("Engine rosPackage must not be null", engine.rosPackage);
+            Assert.assertNotEquals("Engine rosPackage must not be string 'null'", "null", engine.rosPackage);
+            Assert.assertNotNull("Engine rosArtifact must not be null", engine.rosArtifact);
+            Assert.assertNotEquals("Engine rosArtifact must not be string 'null'", "null", engine.rosArtifact);
+        }
+
+        for (RosSystem2SysMLTransformer.ModeletTypeResult mtr : result.modeletTypes) {
+            Assert.assertNotEquals("Modelet type name must not be Unknown", "Unknown", mtr.name);
+            Assert.assertNotEquals("Modelet rosType must not be unknown/msg/Unknown", "unknown/msg/Unknown", mtr.rosType);
+        }
+
         String actualOutput = transformer.generateSysMLText(result).trim().replace("\r\n", "\n");
         String expectedOutput = Files.readString(expectedSysML).trim().replace("\r\n", "\n");
 

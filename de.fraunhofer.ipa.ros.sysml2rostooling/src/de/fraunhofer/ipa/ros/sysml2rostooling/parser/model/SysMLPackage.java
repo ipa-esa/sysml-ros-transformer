@@ -10,6 +10,7 @@ import java.util.List;
  */
 public class SysMLPackage {
     private String name;
+    private String sourceFilePath;
     private List<String> imports = new ArrayList<>();
     private List<SysMLPartDef> partDefs = new ArrayList<>();
     private List<SysMLActionDef> actionDefs = new ArrayList<>();
@@ -21,6 +22,14 @@ public class SysMLPackage {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getSourceFilePath() {
+        return sourceFilePath;
+    }
+
+    public void setSourceFilePath(String sourceFilePath) {
+        this.sourceFilePath = sourceFilePath;
     }
 
     public List<String> getImports() {
